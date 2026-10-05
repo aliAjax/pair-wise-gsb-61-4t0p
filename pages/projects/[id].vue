@@ -48,16 +48,20 @@ const editReason = ref('');
 const supplementNote = ref('');
 const selectedEvidence = ref<string[]>([]);
 
+const packageLabel = ref('');
+const packageNote = ref('');
+
 const tabs = [
   { label: '证据文件', icon: 'i-heroicons-document-text' },
   { label: '法规项目', icon: 'i-heroicons-list-bullet' },
   { label: '版本与影响', icon: 'i-heroicons-arrows-right-left' },
+  { label: '历史提交包', icon: 'i-heroicons-archive-box' },
   { label: '审计记录', icon: 'i-heroicons-clock' }
 ];
 
 const transitionOptions = computed(() => {
   const current = project.value?.status;
-  if (current === 'draft') return [{ label: '提交认证机构', value: 'submitted' }];
+  if (current === 'draft') return [{ label: '提交认证机构（发布）', value: 'submitted' }];
   if (current === 'submitted') return [{ label: '开始审阅', value: 'under_review' }];
   if (current === 'under_review') {
     return [
@@ -70,7 +74,11 @@ const transitionOptions = computed(() => {
   return [{ label: '重新打开审阅', value: 'under_review' }];
 });
 
-const blockingIssues = computed(() => (project.value ? validateSubmission(project.value) : []));
+const gate = computed(() => (project.value ? store.publishGate(project.value.id) : null));
+const blockingIssues = computed(() =>
+  project.value ? validateSubmission(project.value, store.ledger) : []
+);
+const references = computed(() => (project.value ? store.projectReferences(project.value.id) : []));
 
 function saveEditor() {
   message.value = '';
@@ -86,7 +94,7 @@ function saveEditor() {
   }
   store.updateProject(id, { ...editor }, editReason.value);
   editReason.value = '';
-  message.value = '项目资料与版本影响已保存。';
+  message.value = '项目资料、版本影响与引用账已重算并保存。';
 }
 
 function transition() {
@@ -97,11 +105,16 @@ function transition() {
     error.value = '请填写审批流转依据';
     return;
   }
-  if (transitionStatus.value === 'approved' && blockingIssues.value.length) {
-    error.value = `存在阻断项，不能批准：${blockingIssues.value.join('；')}`;
+  const result = store.transition(
+    id,
+    transitionStatus.value,
+    project.value.reviewer === '待分派' ? '认证机构审阅人' : project.value.reviewer,
+    transitionReason.value
+  );
+  if (!result.ok) {
+    error.value = `发布已停住：${(result.issues ?? []).join('；')}`;
     return;
   }
-  store.transition(id, transitionStatus.value, project.value.reviewer === '待分派' ? '认证机构审阅人' : project.value.reviewer, transitionReason.value);
   transitionReason.value = '';
   message.value = '审批状态已更新。';
 }
@@ -109,7 +122,7 @@ function transition() {
 function updateEvidence(evidenceId: string, status: EvidenceStatus) {
   if (!project.value) return;
   store.updateEvidence(id, evidenceId, status, `审阅人将证据标记为${status}`);
-  message.value = '证据审阅状态已更新。';
+  message.value = '证据审阅状态已更新，法规完整性已重算。';
 }
 
 function bulkSupplement() {
@@ -123,6 +136,20 @@ function bulkSupplement() {
   selectedEvidence.value = [];
   supplementNote.value = '';
   message.value = `已将 ${count} 项证据更新至当前软件基线并重新提交。`;
+}
+
+function freezePackage() {
+  if (!project.value) return;
+  message.value = '';
+  error.value = '';
+  if (!packageLabel.value.trim() || !packageNote.value.trim()) {
+    error.value = '请填写提交包名称和冻结说明';
+    return;
+  }
+  store.freezePackage(id, packageLabel.value.trim(), packageNote.value.trim(), project.value.applicant);
+  packageLabel.value = '';
+  packageNote.value = '';
+  message.value = '历史提交包已按当前时间点冻结；后续源头换版/撤回不会回改它。';
 }
 </script>
 
@@ -156,8 +183,19 @@ function bulkSupplement() {
 
     <div v-if="message" class="mb-4 border border-green-200 bg-green-50 p-3 text-sm text-green-900">{{ message }}</div>
     <div v-if="error" class="mb-4 border border-red-200 bg-red-50 p-3 text-sm text-red-900">{{ error }}</div>
+
+    <div v-if="gate && gate.chainIssues.length" class="mb-5 border border-red-300 bg-red-50 p-4">
+      <p class="text-sm font-semibold text-red-950">引用链路问题，发布已停住</p>
+      <div v-for="(chain, index) in gate.chainIssues" :key="index" class="mt-3">
+        <UBadge color="red" variant="soft" class="mb-1">{{ chain.type === 'cycle' ? '引用成环' : '来源丢失' }}</UBadge>
+        <p class="font-mono text-xs text-red-900">{{ chain.chain.join('  →  ') }}</p>
+        <p class="mt-1 text-sm text-red-900">{{ chain.detail }}</p>
+      </div>
+      <NuxtLink to="/ledger" class="mt-3 inline-block text-sm font-medium text-teal-700 hover:underline">前往共享报告引用账处理 →</NuxtLink>
+    </div>
+
     <div v-if="blockingIssues.length" class="mb-5 border border-amber-200 bg-amber-50 p-4">
-      <p class="text-sm font-semibold text-amber-950">批准前阻断项</p>
+      <p class="text-sm font-semibold text-amber-950">批准前阻断项（按当前时间点实时计算）</p>
       <ul class="mt-2 list-inside list-disc space-y-1 text-sm text-amber-900">
         <li v-for="issue in blockingIssues" :key="issue">{{ issue }}</li>
       </ul>
@@ -168,7 +206,7 @@ function bulkSupplement() {
         <div class="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 class="font-semibold">项目与版本基线</h2>
-            <p class="mt-1 text-xs text-slate-500">变更会生成新版本并标记受影响配置。</p>
+            <p class="mt-1 text-xs text-slate-500">变更会生成新版本并触发共享引用证据重算。</p>
           </div>
         </div>
         <form class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" @submit.prevent="saveEditor">
@@ -189,7 +227,7 @@ function bulkSupplement() {
 
       <div class="border border-slate-200 bg-white p-5">
         <h2 class="font-semibold">审批流转</h2>
-        <p class="mt-1 text-xs text-slate-500">批准前系统检查缺失证据、版本错配和配置覆盖。</p>
+        <p class="mt-1 text-xs text-slate-500">提交/批准前检查法规完整性、失效配置与引用链路；成环或丢失来源直接停住。</p>
         <form class="mt-4 space-y-4" @submit.prevent="transition">
           <UFormGroup label="目标状态">
             <USelect v-model="transitionStatus" :options="transitionOptions" />
@@ -202,12 +240,34 @@ function bulkSupplement() {
       </div>
     </section>
 
+    <section v-if="references.length" class="mb-6 border border-teal-200 bg-teal-50/60 p-4">
+      <h2 class="text-sm font-semibold text-teal-950">共享报告引用登记</h2>
+      <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div v-for="ref in references" :key="ref.id" class="border border-teal-100 bg-white p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-medium">{{ ref.familyName }} {{ ref.reportVersionLabel }}</p>
+            <UBadge
+              :color="ref.staleConfigurations.length || ref.uncoveredConfigurations.length ? 'red' : 'green'"
+              variant="soft"
+            >
+              {{ ref.staleConfigurations.length || ref.uncoveredConfigurations.length ? '存在失效配置' : '引用有效' }}
+            </UBadge>
+          </div>
+          <p class="mt-2 text-xs text-slate-500">登记 {{ ref.id }} · 覆盖 {{ ref.configurations.join('、') }}</p>
+          <p v-if="ref.validConfigurations.length" class="mt-1 text-xs text-green-700">当前有效：{{ ref.validConfigurations.join('、') }}</p>
+          <p v-if="ref.staleConfigurations.length" class="mt-1 text-xs text-red-700">源头换版/撤回失效：{{ ref.staleConfigurations.join('、') }}</p>
+          <p v-if="ref.uncoveredConfigurations.length" class="mt-1 text-xs text-amber-700">超出源头覆盖：{{ ref.uncoveredConfigurations.join('、') }}</p>
+        </div>
+      </div>
+      <NuxtLink to="/ledger" class="mt-3 inline-block text-xs font-medium text-teal-700 hover:underline">在引用账中换版刷新或重新登记 →</NuxtLink>
+    </section>
+
     <UTabs v-model="activeTab" :items="tabs" class="mb-5" />
 
     <section v-if="activeTab === 0" class="border border-slate-200 bg-white">
       <div class="border-b border-slate-200 px-4 py-3">
         <h2 class="font-semibold">证据文件审阅</h2>
-        <p class="mt-1 text-xs text-slate-500">逐项接受、拒绝或要求重新抽样。</p>
+        <p class="mt-1 text-xs text-slate-500">带共享引用标记的证据随源头换版/撤回按配置失效，恢复有效后需重新审阅。</p>
       </div>
       <EvidenceTable :evidence="project.evidence" editable @update="updateEvidence" />
     </section>
@@ -215,7 +275,7 @@ function bulkSupplement() {
     <section v-else-if="activeTab === 1">
       <div class="mb-4">
         <h2 class="font-semibold">法规项目覆盖</h2>
-        <p class="mt-1 text-sm text-slate-500">按法规项展开证据、配置覆盖和阻断问题。</p>
+        <p class="mt-1 text-sm text-slate-500">完整性按当前时间点实时重算：共享引用、失效配置与版本冲突都会体现。</p>
       </div>
       <RegulationTree :regulations="project.regulations" :evidence="project.evidence" />
     </section>
@@ -244,7 +304,7 @@ function bulkSupplement() {
 
       <div class="border border-slate-200 bg-white p-5">
         <h2 class="font-semibold">批量补件</h2>
-        <p class="mt-1 text-xs text-slate-500">将缺失、被拒或待重交证据更新到当前软件基线。</p>
+        <p class="mt-1 text-xs text-slate-500">将缺失、被拒、待重交或因源头变更失效的证据更新到当前软件基线。</p>
         <form class="mt-4 space-y-4" @submit.prevent="bulkSupplement">
           <label
             v-for="item in project.evidence.filter((evidence) => ['rejected', 'resubmit', 'missing'].includes(evidence.status))"
@@ -254,7 +314,10 @@ function bulkSupplement() {
             <input v-model="selectedEvidence" type="checkbox" :value="item.id" class="mt-1" />
             <span>
               <span class="block text-sm font-medium">{{ item.name }}</span>
-              <span class="mt-1 block text-xs text-slate-500">{{ item.id }} · 当前 SW {{ item.softwareVersion }}</span>
+              <span class="mt-1 block text-xs text-slate-500">
+                {{ item.id }} · 当前 SW {{ item.softwareVersion }}
+                <template v-if="(item.invalidatedConfigurations ?? []).length"> · 失效 {{ item.invalidatedConfigurations!.join('、') }}</template>
+              </span>
             </span>
           </label>
           <p v-if="!project.evidence.some((evidence) => ['rejected', 'resubmit', 'missing'].includes(evidence.status))" class="text-sm text-slate-500">
@@ -265,6 +328,70 @@ function bulkSupplement() {
           </UFormGroup>
           <UButton type="submit" color="primary" class="w-full justify-center">批量更新并重新提交</UButton>
         </form>
+      </div>
+    </section>
+
+    <section v-else-if="activeTab === 3" class="grid gap-6 xl:grid-cols-[minmax(320px,1fr)_minmax(0,2fr)]">
+      <div class="border border-slate-200 bg-white p-5">
+        <h2 class="font-semibold">冻结新提交包</h2>
+        <p class="mt-1 text-xs text-slate-500">按当前时间点固化法规完整性与共享报告版本；之后源头换版/撤回不回改历史包。</p>
+        <form class="mt-4 space-y-4" @submit.prevent="freezePackage">
+          <UFormGroup label="提交包名称">
+            <UInput v-model="packageLabel" placeholder="如：正式批准提交包" />
+          </UFormGroup>
+          <UFormGroup label="冻结说明">
+            <UTextarea v-model="packageNote" :rows="3" placeholder="记录冻结时点、审阅结论" />
+          </UFormGroup>
+          <UButton type="submit" color="primary" class="w-full justify-center">冻结当前证据状态</UButton>
+        </form>
+      </div>
+
+      <div class="space-y-4">
+        <div v-if="!project.packages.length" class="border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          尚无历史提交包。
+        </div>
+        <article v-for="pkg in [...project.packages].reverse()" :key="pkg.id" class="border border-slate-200 bg-white p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="font-medium">{{ pkg.label }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ pkg.createdAt.slice(0, 16).replace('T', ' ') }} · {{ pkg.author }} · {{ pkg.id }}</p>
+            </div>
+            <UBadge color="gray" variant="soft">冻结时点</UBadge>
+          </div>
+          <p class="mt-3 text-sm text-slate-600">{{ pkg.note }}</p>
+
+          <div class="mt-4">
+            <p class="text-xs font-semibold text-slate-500">冻结时法规完整性</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <UBadge
+                v-for="snapshot in pkg.regulationSnapshots"
+                :key="snapshot.regulationId"
+                :color="snapshot.status === 'complete' ? 'green' : snapshot.status === 'conflict' ? 'red' : 'amber'"
+                variant="soft"
+              >
+                {{ snapshot.code }} {{ snapshot.coverage }}%
+              </UBadge>
+            </div>
+          </div>
+
+          <div v-if="pkg.references.length" class="mt-4">
+            <p class="text-xs font-semibold text-slate-500">冻结时共享报告版本（不随后续换版改变）</p>
+            <ul class="mt-2 space-y-1 text-xs text-slate-600">
+              <li v-for="ref in pkg.references" :key="ref.refId" class="font-mono">
+                {{ ref.reportKey }} · {{ ref.version }} · {{ ref.configurations.join('、') }}
+              </li>
+            </ul>
+          </div>
+
+          <details class="mt-4 text-xs text-slate-500">
+            <summary class="cursor-pointer">查看证据版本指纹（{{ pkg.evidenceFingerprints.length }}）</summary>
+            <ul class="mt-2 space-y-1 font-mono">
+              <li v-for="fp in pkg.evidenceFingerprints" :key="fp.evidenceId">
+                {{ fp.evidenceId }} · {{ fp.name }} · {{ fp.version }} · {{ fp.configurations.join('、') }}
+              </li>
+            </ul>
+          </details>
+        </article>
       </div>
     </section>
 

@@ -1,4 +1,5 @@
-import type { ApprovalProject, ProjectInput } from '~/types/certification';
+import { evaluatePublishGate } from './reference-ledger';
+import type { ApprovalProject, LedgerState, ProjectInput } from '~/types/certification';
 
 export function validateProjectInput(input: ProjectInput) {
   const errors: Partial<Record<keyof ProjectInput, string>> = {};
@@ -16,21 +17,33 @@ export function validateProjectInput(input: ProjectInput) {
   return errors;
 }
 
-export function validateSubmission(project: ApprovalProject) {
+/**
+ * 审批阻断：法规完整性按当前时间点实时计算；
+ * 引用成环 / 丢失来源 / 失效配置一律阻断发布。
+ */
+export function validateSubmission(project: ApprovalProject, ledger?: LedgerState) {
   const issues: string[] = [];
-  const requiredRegulations = project.regulations.filter((item) => item.required);
-  const missingEvidence = project.evidence.filter((item) =>
-    ['missing', 'rejected', 'resubmit'].includes(item.status)
-  );
-  const versionMismatch = project.evidence.filter(
-    (item) => item.softwareVersion !== project.softwareVersion
-  );
-  const coverageIssue = requiredRegulations.find((item) => item.status !== 'complete');
-  const expiring = new Date(project.certificateExpiry) <= new Date('2026-12-31');
 
-  if (missingEvidence.length) issues.push(`${missingEvidence.length} 项证据缺失、被拒或待补件`);
-  if (versionMismatch.length) issues.push(`${versionMismatch.length} 项证据软件版本与项目基线不一致`);
-  if (coverageIssue) issues.push(`法规项 ${coverageIssue.code} 尚未完整覆盖配置`);
+  if (ledger) {
+    const gate = evaluatePublishGate(project, ledger);
+    if (!gate.allowed) issues.push(...gate.issues);
+  } else {
+    // 无引用账场景的兼容检查
+    const requiredRegulations = project.regulations.filter((item) => item.required);
+    const missingEvidence = project.evidence.filter((item) =>
+      ['missing', 'rejected', 'resubmit'].includes(item.status)
+    );
+    const versionMismatch = project.evidence.filter(
+      (item) => item.softwareVersion !== project.softwareVersion
+    );
+    const coverageIssue = requiredRegulations.find((item) => item.status !== 'complete');
+
+    if (missingEvidence.length) issues.push(`${missingEvidence.length} 项证据缺失、被拒或待补件`);
+    if (versionMismatch.length) issues.push(`${versionMismatch.length} 项证据软件版本与项目基线不一致`);
+    if (coverageIssue) issues.push(`法规项 ${coverageIssue.code} 尚未完整覆盖配置`);
+  }
+
+  const expiring = new Date(project.certificateExpiry) <= new Date('2026-12-31');
   if (expiring) issues.push('证书有效期不足 90 天，需先确认续证安排');
 
   return issues;

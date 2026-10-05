@@ -1,7 +1,7 @@
 import { seedProjects } from '~/data/seed';
 import type { ApprovalProject } from '~/types/certification';
 
-const STORAGE_KEY = 'vehicle-type-approval-projects-v1';
+const STORAGE_KEY = 'vehicle-type-approval-projects-v2';
 
 function currentProjects(): ApprovalProject[] {
   if (typeof localStorage === 'undefined') return structuredClone(seedProjects);

@@ -100,7 +100,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-09-18',
     updatedAt: '2026-09-28T10:45:00.000Z',
     certificateExpiry: '2026-12-16',
-    regulations: regulationCatalog,
+    regulations: structuredClone(regulationCatalog),
     evidence: [
       {
         id: 'EV-118-01',
@@ -151,7 +151,8 @@ export const seedProjects: ApprovalProject[] = [
         softwareVersion: '8.4.1',
         configurations: ['长续航四驱版', '标准续航后驱版'],
         status: 'accepted',
-        note: '覆盖全部量产电池配置。',
+        reportRefId: 'RR-118-BAT',
+        note: '覆盖全部量产电池配置；与 TA-2026-120 共用同一源头报告。',
         updatedAt: '2026-09-19T08:00:00.000Z'
       }
     ],
@@ -190,7 +191,8 @@ export const seedProjects: ApprovalProject[] = [
         detail: '软件基线更新为 8.4.1，需重新确认受影响法规项。',
         createdAt: '2026-09-27T04:10:00.000Z'
       }
-    ]
+    ],
+    packages: []
   },
   {
     id: 'TA-2026-109',
@@ -208,7 +210,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-09-05',
     updatedAt: '2026-09-26T02:15:00.000Z',
     certificateExpiry: '2026-11-20',
-    regulations: regulationCatalog.slice(0, 6),
+    regulations: structuredClone(regulationCatalog).slice(0, 6),
     evidence: [
       {
         id: 'EV-109-01',
@@ -256,7 +258,8 @@ export const seedProjects: ApprovalProject[] = [
         detail: '能耗证据软件版本需更新后重新抽样测试。',
         createdAt: '2026-09-26T02:15:00.000Z'
       }
-    ]
+    ],
+    packages: []
   },
   {
     id: 'TA-2026-092',
@@ -274,7 +277,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-07-12',
     updatedAt: '2026-08-30T09:20:00.000Z',
     certificateExpiry: '2027-08-29',
-    regulations: regulationCatalog.slice(0, 5),
+    regulations: structuredClone(regulationCatalog).slice(0, 5),
     evidence: [
       {
         id: 'EV-092-01',
@@ -310,6 +313,32 @@ export const seedProjects: ApprovalProject[] = [
         detail: '全部适用范围证据通过审阅，提交包版本锁定。',
         createdAt: '2026-08-30T09:20:00.000Z'
       }
+    ],
+    packages: [
+      {
+        id: 'PKG-092-01',
+        projectId: 'TA-2026-092',
+        label: '正式批准提交包',
+        createdAt: '2026-08-30T09:20:00.000Z',
+        author: '何谦',
+        regulationSnapshots: [
+          { regulationId: 'REG-BRAKE', code: 'GB 21670', status: 'complete', coverage: 100, issues: [] },
+          { regulationId: 'REG-LIGHT', code: 'GB 4785', status: 'complete', coverage: 100, issues: [] },
+          { regulationId: 'REG-EMC', code: 'GB 34660', status: 'complete', coverage: 100, issues: [] },
+          { regulationId: 'REG-SOFTWARE', code: 'R156', status: 'complete', coverage: 100, issues: [] },
+          { regulationId: 'REG-WLTP', code: 'GB 18352.6', status: 'complete', coverage: 100, issues: [] }
+        ],
+        references: [],
+        evidenceFingerprints: [
+          {
+            evidenceId: 'EV-092-01',
+            name: '制动系统批准报告',
+            version: 'R1',
+            configurations: ['高顶货运版']
+          }
+        ],
+        note: '批准时冻结；此后源头报告换版或撤回均不回改本提交包。'
+      }
     ]
   },
   {
@@ -327,7 +356,7 @@ export const seedProjects: ApprovalProject[] = [
     agency: '华东认证中心',
     updatedAt: '2026-09-27T12:30:00.000Z',
     certificateExpiry: '2026-10-24',
-    regulations: regulationCatalog.filter((item) => ['REG-BRAKE', 'REG-EMC', 'REG-BATTERY'].includes(item.id)),
+    regulations: structuredClone(regulationCatalog).filter((item) => ['REG-BRAKE', 'REG-EMC', 'REG-BATTERY'].includes(item.id)),
     evidence: [
       {
         id: 'EV-120-01',
@@ -341,6 +370,20 @@ export const seedProjects: ApprovalProject[] = [
         status: 'submitted',
         note: '等待认证机构确认零件号完整性。',
         updatedAt: '2026-09-27T12:30:00.000Z'
+      },
+      {
+        id: 'EV-120-02',
+        projectId: 'TA-2026-120',
+        regulationId: 'REG-BATTERY',
+        name: '动力电池包安全测试报告（共用）',
+        type: 'test_report',
+        version: 'R4',
+        softwareVersion: '1.9.2',
+        configurations: ['标准厢式版'],
+        status: 'submitted',
+        reportRefId: 'RR-120-BAT',
+        note: '引用与 TA-2026-118 同一份电池包试验报告 R4，覆盖标准厢式版。',
+        updatedAt: '2026-09-27T12:40:00.000Z'
       }
     ],
     versions: [
@@ -356,12 +399,20 @@ export const seedProjects: ApprovalProject[] = [
     ],
     audit: [
       {
+        id: 'AUD-120-02',
+        actor: '江洲新能源',
+        action: '登记共享引用',
+        detail: '以源账批次 BAT-SEED-01 登记共用电池包报告 R4，覆盖标准厢式版。',
+        createdAt: '2026-09-27T12:40:00.000Z'
+      },
+      {
         id: 'AUD-120-01',
         actor: '江洲新能源',
         action: '建立项目',
         detail: '创建认证证据包草稿。',
         createdAt: '2026-09-27T12:30:00.000Z'
       }
-    ]
+    ],
+    packages: []
   }
 ];

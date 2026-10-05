@@ -25,7 +25,9 @@ function matches(project: ApprovalProject, filters: ProjectFilters) {
     (filters.risk === 'missing' &&
       project.regulations.some((item) => item.status === 'missing' || item.status === 'conflict')) ||
     (filters.risk === 'version_conflict' &&
-      project.evidence.some((item) => item.softwareVersion !== project.softwareVersion));
+      project.evidence.some(
+        (item) => item.softwareVersion !== project.softwareVersion || (item.invalidatedConfigurations ?? []).length > 0
+      ));
 
   return matchesQuery && matchesStatus && matchesAgency && matchesRisk;
 }

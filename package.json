@@ -8,6 +8,7 @@
     "build": "nuxt build",
     "preview": "nuxt preview --host 0.0.0.0 --port 18461",
     "typecheck": "nuxt typecheck",
+    "test:ledger": "jiti tests/reference-ledger.test.ts",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

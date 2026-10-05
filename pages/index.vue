@@ -45,7 +45,9 @@ const openCount = computed(() => store.projects.filter((project) => !['approved'
 const supplementCount = computed(() => store.projects.filter((project) => project.status === 'supplement_required').length);
 const versionConflictCount = computed(() =>
   store.projects.filter((project) =>
-    project.evidence.some((evidence) => evidence.softwareVersion !== project.softwareVersion)
+    project.evidence.some(
+      (evidence) => evidence.softwareVersion !== project.softwareVersion || (evidence.invalidatedConfigurations ?? []).length > 0
+    )
   ).length
 );
 const expiringCount = computed(() =>
@@ -53,6 +55,7 @@ const expiringCount = computed(() =>
 );
 
 function riskLabel(project: (typeof projectRows.value)[number]) {
+  if (project.evidence.some((item) => (item.invalidatedConfigurations ?? []).length > 0)) return '共享报告失效待重算';
   if (project.evidence.some((item) => item.softwareVersion !== project.softwareVersion)) return '软件版本冲突';
   if (project.regulations.some((item) => item.status !== 'complete')) return '法规覆盖缺失';
   if (new Date(project.certificateExpiry) <= new Date('2026-12-31')) return '证书临近到期';
