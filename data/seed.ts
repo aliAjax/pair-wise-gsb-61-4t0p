@@ -1,4 +1,4 @@
-import type { ApprovalProject, RegulationItem } from '~/types/certification';
+import type { ApprovalProject, RegulationItem, ReportReference, SharedReport } from '~/types/certification';
 
 export const regulationCatalog: RegulationItem[] = [
   {
@@ -83,6 +83,11 @@ export const regulationCatalog: RegulationItem[] = [
   }
 ];
 
+/** 各项目持有独立的法规项副本，避免跨项目重算时互相污染。 */
+function cloneRegulations(items: RegulationItem[]): RegulationItem[] {
+  return items.map((item) => ({ ...item, issues: [...item.issues] }));
+}
+
 export const seedProjects: ApprovalProject[] = [
   {
     id: 'TA-2026-118',
@@ -100,7 +105,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-09-18',
     updatedAt: '2026-09-28T10:45:00.000Z',
     certificateExpiry: '2026-12-16',
-    regulations: regulationCatalog,
+    regulations: cloneRegulations(regulationCatalog),
     evidence: [
       {
         id: 'EV-118-01',
@@ -208,7 +213,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-09-05',
     updatedAt: '2026-09-26T02:15:00.000Z',
     certificateExpiry: '2026-11-20',
-    regulations: regulationCatalog.slice(0, 6),
+    regulations: cloneRegulations(regulationCatalog.slice(0, 6)),
     evidence: [
       {
         id: 'EV-109-01',
@@ -235,6 +240,19 @@ export const seedProjects: ApprovalProject[] = [
         status: 'resubmit',
         note: '测试软件版本与当前申报版本不一致。',
         updatedAt: '2026-09-26T02:15:00.000Z'
+      },
+      {
+        id: 'EV-109-03',
+        projectId: 'TA-2026-109',
+        regulationId: 'REG-BATTERY',
+        name: '动力电池包安全测试报告',
+        type: 'test_report',
+        version: 'R4',
+        softwareVersion: '5.7.0',
+        configurations: ['七座旗舰版'],
+        status: 'accepted',
+        note: '共用平台电池包报告，登记自 TA-2026-118 项目引用。',
+        updatedAt: '2026-09-20T03:00:00.000Z'
       }
     ],
     versions: [
@@ -274,7 +292,7 @@ export const seedProjects: ApprovalProject[] = [
     submittedAt: '2026-07-12',
     updatedAt: '2026-08-30T09:20:00.000Z',
     certificateExpiry: '2027-08-29',
-    regulations: regulationCatalog.slice(0, 5),
+    regulations: cloneRegulations(regulationCatalog.slice(0, 5)),
     evidence: [
       {
         id: 'EV-092-01',
@@ -327,7 +345,7 @@ export const seedProjects: ApprovalProject[] = [
     agency: '华东认证中心',
     updatedAt: '2026-09-27T12:30:00.000Z',
     certificateExpiry: '2026-10-24',
-    regulations: regulationCatalog.filter((item) => ['REG-BRAKE', 'REG-EMC', 'REG-BATTERY'].includes(item.id)),
+    regulations: cloneRegulations(regulationCatalog.filter((item) => ['REG-BRAKE', 'REG-EMC', 'REG-BATTERY'].includes(item.id))),
     evidence: [
       {
         id: 'EV-120-01',
@@ -341,6 +359,19 @@ export const seedProjects: ApprovalProject[] = [
         status: 'submitted',
         note: '等待认证机构确认零件号完整性。',
         updatedAt: '2026-09-27T12:30:00.000Z'
+      },
+      {
+        id: 'EV-120-02',
+        projectId: 'TA-2026-120',
+        regulationId: 'REG-BATTERY',
+        name: '动力电池包安全测试报告',
+        type: 'test_report',
+        version: 'R4',
+        softwareVersion: '1.9.2',
+        configurations: ['标准厢式版'],
+        status: 'submitted',
+        note: '共用平台电池包报告，等待机构确认引用链。',
+        updatedAt: '2026-09-28T02:00:00.000Z'
       }
     ],
     versions: [
@@ -363,5 +394,108 @@ export const seedProjects: ApprovalProject[] = [
         createdAt: '2026-09-27T12:30:00.000Z'
       }
     ]
+  }
+];
+
+/** 源账：多车型共用的试验报告。 */
+export const seedSharedReports: SharedReport[] = [
+  {
+    id: 'SHR-BAT-21700',
+    name: '共用平台电池包安全试验报告',
+    regulationId: 'REG-BATTERY',
+    owner: '华东电池检测实验室',
+    status: 'active',
+    currentVersion: 'R4',
+    versions: [
+      { version: 'R3', issuedAt: '2026-03-12', status: 'superseded', note: '初版平台电池包试验，已被 R4 替代。' },
+      { version: 'R4', issuedAt: '2026-08-02', status: 'active', note: '现行有效版本，覆盖 21700 平台全部配置。' }
+    ],
+    updatedAt: '2026-08-02T08:00:00.000Z'
+  },
+  {
+    id: 'SHR-EMC-01',
+    name: '整车电磁兼容比对试验报告',
+    regulationId: 'REG-EMC',
+    owner: '华南电磁兼容实验室',
+    status: 'active',
+    currentVersion: 'R2',
+    versions: [
+      { version: 'R1', issuedAt: '2026-05-20', status: 'superseded', note: '初版比对报告。' },
+      { version: 'R2', issuedAt: '2026-08-30', status: 'active', note: '补充高压部件工况。' }
+    ],
+    updatedAt: '2026-08-30T08:00:00.000Z'
+  }
+];
+
+/**
+ * 引用账种子：
+ * - REF-118/109/120-BAT 构成正常的跨项目引用链；
+ * - REF-120-ORPHAN 指向已从源账删除的报告，演示“丢失来源”；
+ * - REF-109-EMC-A/B 互相指认上游，演示“引用成环”。
+ */
+export const seedReferences: ReportReference[] = [
+  {
+    id: 'REF-118-BAT',
+    projectId: 'TA-2026-118',
+    evidenceId: 'EV-118-04',
+    reportId: 'SHR-BAT-21700',
+    reportVersion: 'R4',
+    configurations: ['长续航四驱版', '标准续航后驱版'],
+    registeredAt: '2026-09-19T08:05:00.000Z',
+    status: 'registered'
+  },
+  {
+    id: 'REF-109-BAT',
+    projectId: 'TA-2026-109',
+    evidenceId: 'EV-109-03',
+    reportId: 'SHR-BAT-21700',
+    reportVersion: 'R4',
+    configurations: ['七座旗舰版'],
+    derivedFrom: 'REF-118-BAT',
+    registeredAt: '2026-09-20T03:05:00.000Z',
+    status: 'registered'
+  },
+  {
+    id: 'REF-120-BAT',
+    projectId: 'TA-2026-120',
+    evidenceId: 'EV-120-02',
+    reportId: 'SHR-BAT-21700',
+    reportVersion: 'R4',
+    configurations: ['标准厢式版'],
+    derivedFrom: 'REF-109-BAT',
+    registeredAt: '2026-09-28T02:05:00.000Z',
+    status: 'registered'
+  },
+  {
+    id: 'REF-120-ORPHAN',
+    projectId: 'TA-2026-120',
+    evidenceId: 'EV-120-01',
+    reportId: 'SHR-BAT-100AH',
+    reportVersion: 'R2',
+    configurations: ['标准厢式版'],
+    registeredAt: '2026-09-27T12:35:00.000Z',
+    status: 'registered'
+  },
+  {
+    id: 'REF-109-EMC-A',
+    projectId: 'TA-2026-109',
+    evidenceId: 'EV-109-01',
+    reportId: 'SHR-EMC-01',
+    reportVersion: 'R2',
+    configurations: ['七座旗舰版'],
+    derivedFrom: 'REF-109-EMC-B',
+    registeredAt: '2026-09-10T03:05:00.000Z',
+    status: 'registered'
+  },
+  {
+    id: 'REF-109-EMC-B',
+    projectId: 'TA-2026-109',
+    evidenceId: 'EV-109-01',
+    reportId: 'SHR-EMC-01',
+    reportVersion: 'R2',
+    configurations: ['七座旗舰版'],
+    derivedFrom: 'REF-109-EMC-A',
+    registeredAt: '2026-09-10T03:06:00.000Z',
+    status: 'registered'
   }
 ];

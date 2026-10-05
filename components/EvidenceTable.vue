@@ -4,6 +4,8 @@ import type { EvidenceItem, EvidenceStatus } from '~/types/certification';
 const props = defineProps<{
   evidence: EvidenceItem[];
   editable?: boolean;
+  /** 证据 id → 共享源提示（换版、撤回、来源缺失）。 */
+  hints?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +40,7 @@ const typeLabels: Record<EvidenceItem['type'], string> = {
           <td>
             <p class="font-medium">{{ item.name }}</p>
             <p class="mt-1 text-xs text-slate-500">{{ typeLabels[item.type] }} · {{ item.id }}</p>
+            <p v-if="hints?.[item.id]" class="mt-1 text-xs text-amber-700">{{ hints[item.id] }}</p>
           </td>
           <td class="font-mono text-sm">{{ item.regulationId }}</td>
           <td>

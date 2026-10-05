@@ -1,4 +1,10 @@
-import type { ApprovalProject, ProjectInput } from '~/types/certification';
+import type {
+  ApprovalProject,
+  ProjectInput,
+  ReferenceChainFinding,
+  ReportReference,
+  SharedReport
+} from '~/types/certification';
 
 export function validateProjectInput(input: ProjectInput) {
   const errors: Partial<Record<keyof ProjectInput, string>> = {};
@@ -16,7 +22,13 @@ export function validateProjectInput(input: ProjectInput) {
   return errors;
 }
 
-export function validateSubmission(project: ApprovalProject) {
+export interface SubmissionLedgerContext {
+  references: ReportReference[];
+  reports: SharedReport[];
+  holds: ReferenceChainFinding[];
+}
+
+export function validateSubmission(project: ApprovalProject, ledger?: SubmissionLedgerContext) {
   const issues: string[] = [];
   const requiredRegulations = project.regulations.filter((item) => item.required);
   const missingEvidence = project.evidence.filter((item) =>
@@ -32,6 +44,23 @@ export function validateSubmission(project: ApprovalProject) {
   if (versionMismatch.length) issues.push(`${versionMismatch.length} 项证据软件版本与项目基线不一致`);
   if (coverageIssue) issues.push(`法规项 ${coverageIssue.code} 尚未完整覆盖配置`);
   if (expiring) issues.push('证书有效期不足 90 天，需先确认续证安排');
+
+  if (ledger) {
+    ledger.references
+      .filter((ref) => ref.projectId === project.id && ref.status === 'registered')
+      .forEach((ref) => {
+        const report = ledger.reports.find((item) => item.id === ref.reportId);
+        if (!report) return; // 丢失来源在发布阻断链路中列出
+        if (report.status === 'withdrawn') {
+          issues.push(`共享报告 ${ref.reportId} 已撤回，引用 ${ref.id} 需重新登记来源`);
+        } else if (report.currentVersion !== ref.reportVersion) {
+          issues.push(`共享报告 ${ref.reportId} 已换版至 ${report.currentVersion}，引用版本 ${ref.reportVersion} 失效`);
+        }
+      });
+    ledger.holds.forEach((hold) => {
+      issues.push(`${hold.kind === 'cycle' ? '引用链成环' : '引用来源缺失'}：${hold.chain.join(' → ')}，发布已停住`);
+    });
+  }
 
   return issues;
 }

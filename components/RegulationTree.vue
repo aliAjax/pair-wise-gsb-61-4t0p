@@ -56,6 +56,9 @@ function linkedEvidence(id: string) {
             {{ issue }}
           </p>
         </div>
+        <p v-if="regulation.recomputedAt" class="mb-3 text-xs text-slate-400">
+          完整性重算于 {{ regulation.recomputedAt.slice(0, 16).replace('T', ' ') }}
+        </p>
 
         <div v-if="linkedEvidence(regulation.id).length" class="space-y-2">
           <div
